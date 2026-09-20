@@ -434,11 +434,11 @@ function stripLogoBg(key){
 const NM_BOGUN_2026="";
 const NM_CU_2026="";
 let schools = [
-  {name:"대구보건대학교", type:"num",   count:18, color:"s1", names:NM_BOGUN_2026, leader:null},  
+  {name:"대구보건대학교", type:"num",   count:18, color:"s1", names:NM_BOGUN_2026, leader:null},
   {name:"대구가톨릭대학교", type:"alpha", count:11, color:"s2", names:NM_CU_2026, leader:null},
 ];
 const PRESETS = {
-  summer:[ {name:"대구보건대학교",type:"num",count:18,color:"s1",names:NM_BOGUN_2026,leader:null},
+  summer:[ {name:"대구보건대학교",type:"num",count:18,color:"s1",names:NM_BOGUN_2026, leader:null},
            {name:"대구가톨릭대학교",type:"alpha",count:11,color:"s2",names:NM_CU_2026,leader:null} ],
   winter:[ {name:"대구보건대학교",type:"num",count:18,color:"s1",names:"",leader:null},
            {name:"수성대학교",type:"alpha",count:8,color:"s2",names:"",leader:null},
@@ -1171,6 +1171,7 @@ function nmrtInfoHtml(plan){
   const tail=tailAllImaging(plan), rec=neededSlots();
   const note= IS_PUBLIC ? '' : `<div style="font-size:12px;color:#556;margin-top:5px">※ 종양은 1주차부터 꽉 채워 앞 주가 많고 뒤로 갈수록 줄어듭니다. <b>핵의학 마지막 주의 인원</b>은 ‘시드’ 조(종양 1주차를 채우려 핵의학을 맨 끝 주에 하는 조)라 끝에 한 칸 남습니다 — 컨베이어 구조상 정상.</div>`+
     `<div style="font-size:12px;color:#556;margin-top:3px">※ 영상 인원이 적은 주엔 우선순위 낮은 검사실(<b>V→GE→Philips→S6→Portable</b> 순)을 자동으로 비우고 인원이 늘면 역순으로 채워 <b>빈칸을 최소화</b>합니다. 권장 영상 슬롯 <b>${rec}칸</b>.</div>`+
+    `<div style="font-size:12px;color:#556;margin-top:3px">※ 영상 파트는 <b>검사실 순서대로 도는 순환 배치</b>가 기본이고, 자리가 겹쳐 차선을 골라야 할 때만 <b>그 학생이 가장 적게 간 검사실</b>을 먼저 줍니다. 배치 후 같은 날 학생끼리 자리를 맞바꿔 <b>한 사람이 같은 검사실만 여러 번 가는 편중을 줄입니다</b>(필수 검사실 1회 이상은 절대 보존 — 핵의학·종양 주차는 건드리지 않음).</div>`+
     (tail?`<div style="font-size:12px;color:#7a4b00;margin-top:3px">📌 <b>${tail.weeks.join('·')}주차</b>는 핵의학·종양이 끝나 <b>전원 ${tail.img}명 영상</b> → 그 주만 ${tail.img}칸 필요(검사실당 인원↑).</div>`:'');
   const holdMax=(plan.absMax||cap)*W;   // 최대 수용 = 한 주 상한 × 전체 주
   return `<div style="font-size:13px">${head}</div>`+t+note+
@@ -1303,11 +1304,15 @@ function schedule(){
   students.forEach(s=>{ if(s.nmWeek!=null)_nmP[s.nmWeek]++; if(s.rtWeek!=null)_rtP[s.rtWeek]++; });
   const nmCols=Math.max(1,..._nmP), rtCols=Math.max(1,..._rtP);   // 주당 RI/RT 컬럼 수
 
-  // ---- 영상 매일 배치: 개인 staircase + 동적 슬롯 축소/확대 ----
+  // ---- 영상 매일 배치: 개인 staircase + 동적 슬롯 축소/확대 + 균등 분배 ----
   //  핵/종양으로 영상 인원이 적은 날엔 우선순위 낮은 검사실(V→GE→Philips→S6→Portable…)부터 비우고,
   //  인원이 늘면 역순으로 다시 채워 빈칸을 최소화한다.
+  //  ★ 순환(staircase) 자리가 비어 있으면 그대로 사용 → 검사실 순서대로 도는 기존 구조 유지.
+  //    자리가 겹쳐 '차선'을 골라야 할 때만 지금까지 가장 적게 간 검사실을 우선 배정(균등 분배).
   const byLabel={}; students.forEach(s=>byLabel[s.label]=s);
   students.forEach((s,i)=>{ s.off=Math.round(i*R/N)%R; s.k=0; });
+  const liveR={}, liveG={};         // 배치 진행 중 실시간 방문 횟수(label -> room/group -> n) : 차선 선택 기준
+  students.forEach(s=>{ liveR[s.label]={}; liveG[s.label]={}; });
   const slotmap={};                 // diso -> {slotIndex: label}
   const labslot={};                 // diso -> {label: slotIndex}
   const presentDays={};             // label -> [diso...]
@@ -1334,11 +1339,24 @@ function schedule(){
         if(freeIdx.size===0) break;                          // 슬롯 부족 → 일부 미배치(전원영상 주차)
         const want=m? ((((s.off+s.k)%m)+m)%m) : 0;
         let j;
-        if(freeIdx.has(want)) j=want;
-        else{ let best=null,bd=1e9; for(const f of freeIdx){ const dist=((f-want)%m+m)%m; if(dist<bd){bd=dist;best=f;} } j=best; }
+        if(freeIdx.has(want)) j=want;                          // ① 순환 자리 그대로(기존 구조 유지)
+        else{
+          // ② 차선: 지금까지 '가장 적게 간 검사실' 우선 → 같으면 파트 방문 적은 쪽 → 같으면 순환상 가장 가까운 자리
+          let best=null,bk=null;
+          for(const f of freeIdx){
+            const si=active[f];
+            const k=[ liveR[s.label][roomNames[si]]||0,
+                      liveG[s.label][grpNames[si]]||0,
+                      ((f-want)%m+m)%m ];
+            if(bk===null || k[0]<bk[0] || (k[0]===bk[0] && (k[1]<bk[1] || (k[1]===bk[1] && k[2]<bk[2])))){ bk=k; best=f; }
+          }
+          j=best;
+        }
         freeIdx.delete(j);
         const si=active[j];
         slotmap[diso][si]=s.label; labslot[diso][s.label]=si;
+        liveR[s.label][roomNames[si]]=(liveR[s.label][roomNames[si]]||0)+1;
+        liveG[s.label][grpNames[si]]=(liveG[s.label][grpNames[si]]||0)+1;
         presentDays[s.label].push(diso);
       }
       pool.forEach(s=>s.k++);
@@ -1436,6 +1454,61 @@ function schedule(){
   }
   compact();
   rebuildCounts();
+
+  // ── 균등 분배: 한 학생이 특정 검사실만 여러 번 가지 않도록 '같은 날 학생끼리' 자리 교환 ──
+  //   비용 = Σ(학생별 검사실 방문 횟수²)  → 같은 방 반복이 많을수록 급격히 커짐(=편중 벌점).
+  //   · 교환으로 비용이 실제로 줄어들 때만 적용(개선 없으면 순환 배치 그대로 유지).
+  //   · 이미 채워진 칸끼리만 맞바꿔 빈칸 위치(우선순위 압축 결과)는 건드리지 않음.
+  //   · 절대규칙 보존: 필수 검사실·파트를 '단 1회'만 간 학생은 그 자리를 절대 내주지 않음.
+  //   · 미경험(0회) 필수 검사실을 채우는 교환에는 큰 가산점(COV) → 모든 방 1회 이상 우선.
+  function balanceRooms(){
+    const COV=100;
+    const isCore=rm=>!OVERFLOW_ROOMS.has(rm);
+    const rc=(lab,rm)=>rcount[lab][rm]||0, gc=(lab,g)=>gcount[lab][g]||0;
+    // 학생 lab이 from방(파트 gF) → to방(파트 gT)으로 옮길 때 비용 변화(음수=개선)
+    const dcost=(lab,from,to,gF,gT)=>{
+      const a=rc(lab,from), b=rc(lab,to);
+      let d=(2*b+1)+(1-2*a);                       // (b+1)²-b² + (a-1)²-a²
+      if(isCore(to) && b===0) d-=COV;              // 미경험 필수방을 채움 → 큰 이득
+      if(gF!==gT && gc(lab,gT)===0) d-=COV;        // 미경험 파트를 채움 → 큰 이득
+      return d;
+    };
+    // 이 교환이 커버리지(필수방·파트 1회 이상)를 깨지 않는지
+    const keepsCoverage=(lab,from,to,gF,gT)=>
+      !(from!==to && isCore(from) && rc(lab,from)===1) &&
+      !(gF!==gT && gc(lab,gF)===1);
+    const disos=Object.keys(slotmap).sort();
+    for(let pass=0; pass<8; pass++){
+      let moved=0;
+      for(const diso of disos){
+        const mm=slotmap[diso];
+        const filled=[]; for(let si=0;si<R;si++) if(mm[si]!==undefined) filled.push(si);
+        for(const aSlot of filled){
+          const labA=mm[aSlot]; if(labA===undefined) continue;
+          const rmA=roomNames[aSlot], gA=grpNames[aSlot];
+          let bestSlot=null, bestD=-1e-9;          // 엄밀히 개선되는 교환만
+          for(const bSlot of filled){
+            if(bSlot===aSlot) continue;
+            const labB=mm[bSlot]; if(labB===undefined||labB===labA) continue;
+            const rmB=roomNames[bSlot], gB=grpNames[bSlot];
+            if(rmA===rmB) continue;                // 같은 방(2인실 2번째 자리) → 바꿔도 의미 없음
+            if(!keepsCoverage(labA,rmA,rmB,gA,gB)) continue;
+            if(!keepsCoverage(labB,rmB,rmA,gB,gA)) continue;
+            const d=dcost(labA,rmA,rmB,gA,gB)+dcost(labB,rmB,rmA,gB,gA);
+            if(d<bestD){ bestD=d; bestSlot=bSlot; }
+          }
+          if(bestSlot!=null){ applySwap(diso,labA,bestSlot); moved++; }
+        }
+      }
+      if(!moved) break;
+    }
+    rebuildCounts();
+  }
+  balanceRooms();
+  // 균등화 뒤 혹시 남은 미경험 필수방이 있으면 기존 repair로 한 번 더 보정(절대규칙 우선)
+  if(!fullRoom()){ for(let pass=0; pass<2 && !fullRoom(); pass++){ repair(uniqGroups,'g'); repair(coreRooms,'r'); } rebuildCounts(); }
+  compact(); rebuildCounts();     // 빈칸을 다시 저우선 검사실로 몰아줌(V·GE·Philips·S6…)
+  balanceRooms();                 // 압축으로 생긴 미세 편중 재균등화(빈칸 위치는 불변)
 
   // ── 기존 유지(keep) 모드: 전체 배치는 그대로 두고, 재학 주차 밖 학생만 빈칸 처리(다른 학생 안 건드림) ──
   if(_wmode!=='replan'){
@@ -1774,6 +1847,17 @@ function renderValidation(m){
   // ── (3) 검사실별 배치 매트릭스 ──
   h+=`<h3 style="margin:16px 0 6px">③ 검사실별 배치 현황 (방문 일수)</h3>`;
   h+='<p style="font-size:12px;color:#667"><b style="color:#c0392b">빨강(0)</b>=미경험. 가로=학생, 세로=검사실. <b>V·S6</b>은 보조 검사실(인원 적은 주에 비움)이라 미경험이어도 정상(회색).</p>';
+  // ── 균등 분배 요약: 학생별 '한 검사실 최다 방문 일수'가 낮고 고를수록 좋음 ──
+  {
+    const core=coreRoomsOf(m);
+    const per=m.students.map(s=>{ const c=core.map(r=>m.rcount[s.label][r]||0);
+      return {mx:Math.max(0,...c), mn:Math.min(...c)}; });
+    const mxs=per.map(p=>p.mx), worst=Math.max(...mxs);
+    const avg=(mxs.reduce((a,b)=>a+b,0)/(mxs.length||1)).toFixed(1);
+    const hist={}; mxs.forEach(v=>hist[v]=(hist[v]||0)+1);
+    const histTxt=Object.keys(hist).sort((a,b)=>a-b).map(k=>`${k}일 ${hist[k]}명`).join(' · ');
+    h+=`<p style="font-size:12px;color:#667;margin-top:-4px">⚖️ <b>균등 분배</b> — 학생 1명이 같은 검사실에 가는 최다 일수: <b>최대 ${worst}일</b>(평균 ${avg}일) &nbsp;｜&nbsp; 분포: ${histTxt}</p>`;
+  }
   h+='<table class="val"><tr><th>검사실＼학생</th>';
   m.students.forEach(s=> h+=`<th class="${s.color}">${s.label}</th>`);
   h+='</tr>';
@@ -2579,6 +2663,6 @@ if(IS_PUBLIC){ const _b=document.getElementById("btnRoomCriteria"); if(_b)_b.sty
 // 저장본(생성 결과 포함)으로 열었으면 → 같은 설정으로 스케쥴 자동 재생성해 결과를 바로 표시
 if(window.__EMBED_CONFIG__ && window.__EMBED_CONFIG__.autoGen){ try{ generate(); }catch(e){ console.error(e); } }
 </script>
-<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e3a0380c3ed94c74ac06ae42fa2ee8c7"}'></script>
 </body>
 </html>
+<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e3a0380c3ed94c74ac06ae42fa2ee8c7"}'></script>
