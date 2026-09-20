@@ -979,10 +979,9 @@ function slotPriority(name,c){
   return 100;                              // 그 외 모두 코어(ER·S1,2 2번째 자리 포함 — 비우지 않음)
 }
 // ── 버전 (고칠 때 이 두 줄만 올리면 화면·인쇄물에 함께 반영됨) ──
-const APP_VERSION="1.1.0";
+const APP_VERSION="4.0";
 const APP_UPDATED="2026-09-20";
-const APP_CHANGES={"1.1.0":"검사실 균등 분배 (한 학생이 같은 검사실에 몰리지 않게)",
-                   "1.0.0":"첫 버전 - 순환 배치 · 핵의학/종양 컨베이어 · 성적 · 출결"};
+const APP_CHANGES={"4.0":"검사실 균등 분배 - 한 학생이 같은 검사실에 몰리지 않게 (최다 6일 → 3일)"};
 function showVersion(){
   const el=document.getElementById("hdver"); if(!el)return;
   el.innerHTML=`<b>v${APP_VERSION}</b> · ${APP_UPDATED} 업데이트`;
