@@ -21,6 +21,8 @@
   .hdrow{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   #hospSig{height:48px;background:#fff;padding:6px 12px;border-radius:8px}
   .hddev{margin-left:auto;font-size:12px;opacity:.92;text-align:right;line-height:1.4}
+  .hdver{font-size:10.5px;opacity:.72;letter-spacing:.2px;margin-bottom:2px}
+  .hdver b{font-size:10.5px;font-weight:700}
   .hddev b{font-size:13px}
   .wrap{max-width:1500px;margin:0 auto;padding:20px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -149,7 +151,10 @@
       <h1>학생임상실습 스케쥴 자동 생성기</h1>
       <p>영상의학과지원부, 핵의학과지원팀, 방사선종양학과지원팀</p>
     </div>
-    <div class="hddev">개발 · MRI실 <b>박성호</b></div>
+    <div class="hddev">
+      <div class="hdver" id="hdver" title="마지막 업데이트"></div>
+      개발 · MRI실 <b>박성호</b>
+    </div>
   </div>
 </header>
 
@@ -972,6 +977,16 @@ function slotPriority(name,c){
   if(name==="S6") return 4;                // ④ S6
   if(name==="Portable" && c>=1) return 5;  // ⑤ Portable 2번째 자리(마지막)
   return 100;                              // 그 외 모두 코어(ER·S1,2 2번째 자리 포함 — 비우지 않음)
+}
+// ── 버전 (고칠 때 이 두 줄만 올리면 화면·인쇄물에 함께 반영됨) ──
+const APP_VERSION="1.1.0";
+const APP_UPDATED="2026-09-20";
+const APP_CHANGES={"1.1.0":"검사실 균등 분배 (한 학생이 같은 검사실에 몰리지 않게)",
+                   "1.0.0":"첫 버전 - 순환 배치 · 핵의학/종양 컨베이어 · 성적 · 출결"};
+function showVersion(){
+  const el=document.getElementById("hdver"); if(!el)return;
+  el.innerHTML=`<b>v${APP_VERSION}</b> · ${APP_UPDATED} 업데이트`;
+  el.title=`v${APP_VERSION} (${APP_UPDATED})\n${APP_CHANGES[APP_VERSION]||""}`;
 }
 const OVERFLOW_ROOMS=new Set(["V","S6"]);  // 전 학생 필수 아님(보조 검사실) → 인원 적을 때 비움 허용
 // ── 핵의학·종양 단방향 컨베이어 (일반촬영→핵의학→종양→일반촬영, 우측으로만 이동) ──
@@ -2401,7 +2416,7 @@ function printA4(plain){
      <div class="psub" style="text-align:center;margin-bottom:4px">${schoolNames}</div>
      ${sched}
      <h4 class="proster-h" style="margin:10px 0 5px">학생 명단</h4>${roster}
-     <div class="pcredit" style="text-align:right;color:#888;margin-top:5px">작성 · 대구가톨릭대학교병원 MRI실 박성호</div>`;
+     <div class="pcredit" style="text-align:right;color:#888;margin-top:5px">작성 · 대구가톨릭대학교병원 MRI실 박성호 <span style="opacity:.7">(스케쥴러 v${APP_VERSION})</span></div>`;
   // ── 학생 명단·전체 폰트 크기: 학생이 속한 '학교 수'에 따라 조절 ──
   //  2학교 이하 → 크게(이름 큼, 하단 여백 활용) / 3학교 → 중간 / 4학교+ → 작게.
   //  표 글자는 칸수에 묶여 못 키우므로(자동 폭맞춤) 제목·명단 위주로 키운다. 넘치면 아래 자동 축소가 받아줌.
@@ -2492,7 +2507,8 @@ function saveAsHtml(){
   const inject='<script id="__embedcfg">window.__EMBED_CONFIG__='+cfg+';<\/script>\n';
   html=html.replace('</head>', inject+'</head>');
   // 화면 복원
-  renderSchools(); renderRooms(); refresh();
+  showVersion();
+renderSchools(); renderRooms(); refresh();
   const blob=new Blob([html],{type:'text/html;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   const yr=(document.getElementById('startDate').value||'').slice(0,4)||'설정';
