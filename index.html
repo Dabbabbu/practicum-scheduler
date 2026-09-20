@@ -2507,8 +2507,7 @@ function saveAsHtml(){
   const inject='<script id="__embedcfg">window.__EMBED_CONFIG__='+cfg+';<\/script>\n';
   html=html.replace('</head>', inject+'</head>');
   // 화면 복원
-  showVersion();
-renderSchools(); renderRooms(); refresh();
+  renderSchools(); renderRooms(); refresh();
   const blob=new Blob([html],{type:'text/html;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   const yr=(document.getElementById('startDate').value||'').slice(0,4)||'설정';
@@ -2671,6 +2670,7 @@ document.querySelectorAll('input[name=mixMode]').forEach(r=>r.addEventListener("
 { const c=document.getElementById("nmAllowOver"); if(c) c.addEventListener("change",refresh); }
 
 // init
+showVersion();
 loadConfig();
 if(HOSPITAL_SIG){ const hs=document.getElementById("hospSig"); hs.src=HOSPITAL_SIG; hs.style.display="block"; }
 renderSchools(); renderRooms(); refresh();
